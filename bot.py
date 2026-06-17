@@ -2,6 +2,7 @@ import os
 import subprocess
 import asyncio
 import collections
+import platform
 from dotenv import load_dotenv
 
 import google.generativeai as genai
@@ -14,9 +15,9 @@ load_dotenv()
 
 # 텔레그램 봇 토큰, 허용된 사용자 ID, 구글 제미나이 API 키를 환경변수에서 가져옴
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ALLOWED_USER_ID = os.getenv("ALLOWED_USER_ID")
+ALLOWED_USER_ID = os.getenv("TELEGRAM_CHAT_ID")
 FREE_GOOGLE_API_KEY = os.getenv("FREE_GOOGLE_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.getenv("PAID_GOOGLE_API_KEY")
 
 # 필수 환경변수가 하나라도 없으면 에러를 출력하고 프로그램 종료
 if not all([TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID]) or not (FREE_GOOGLE_API_KEY or GOOGLE_API_KEY):
@@ -29,19 +30,10 @@ ALLOWED_USER_ID = int(ALLOWED_USER_ID)
 # API 키 및 폴백 상태 전역 변수
 using_paid_key = False if FREE_GOOGLE_API_KEY else True
 current_api_key = GOOGLE_API_KEY if using_paid_key else FREE_GOOGLE_API_KEY
+current_model_name = 'gemini-3.5-flash'
 
 # 구글 제미나이 API 키 설정
 genai.configure(api_key=current_api_key)
-
-def switch_to_paid_key():
-    global using_paid_key, current_api_key
-    if GOOGLE_API_KEY and not using_paid_key:
-        print("Switching to paid GOOGLE_API_KEY...")
-        using_paid_key = True
-        current_api_key = GOOGLE_API_KEY
-        genai.configure(api_key=current_api_key)
-        return True
-    return False
 
 def execute_shell_command(command: str):
     """
@@ -51,21 +43,62 @@ def execute_shell_command(command: str):
     """
     pass
 
+def switch_api_mode(mode: str):
+    """
+    사용자가 '유료로 바꿔줘' 또는 '무료로 바꿔줘' 같이 API 모드 변경을 요청할 때 호출하세요.
+    mode에는 'paid' 또는 'free' 문자열을 입력하세요.
+    """
+    pass
+
+def read_memory():
+    """
+    봇의 장기 기억장소인 bot_memory.md 파일의 내용을 읽어서 반환합니다.
+    사용자의 선호도, 포트폴리오, 주식 관련 주요 정보 등 중요한 내용을 확인할 때 호출하세요.
+    """
+    pass
+
+def write_memory(content: str):
+    """
+    봇의 장기 기억장소인 bot_memory.md 파일에 새로운 중요한 정보를 덧붙여 기록합니다.
+    content 파라미터에는 추가할 핵심 내용을 요약해서 입력하세요.
+    """
+    pass
+
+def read_browser_page(url: str):
+    """
+    지정된 URL의 웹사이트를 브라우저를 통해 방문하고 그 내용을 읽어옵니다.
+    사용자가 로그인된 증권사 등 특정 사이트의 정보를 조회할 때 이 도구를 사용하세요.
+    url 파라미터에는 방문할 정확한 주소를 입력하세요 (예: https://www.naver.com).
+    """
+    pass
+
 # 제미나이 AI에게 부여할 역할(페르소나) 설정
+is_mac = platform.system() == "Darwin"
+agent_name = "맥북 로컬 텔레그램 agent" if is_mac else "우분투 서버를 관리하는 텔레그램 에이전트(Antigravity)"
+
 system_instruction = (
-    "당신은 우분투 서버를 관리하는 텔레그램 에이전트(Antigravity)입니다. "
+    f"당신은 {agent_name}입니다. "
+    "주요 용도: stock_advisor 프로그램을 체크하고 대화형으로 제어하는 것입니다. "
+    "관련 폴더(우분투: /home/ubuntu/stock_advisor, 맥북: /Users/daesic/Documents/stock_advisor)를 참고하세요. "
+    "웹사이트 방문이 필요하면 'read_browser_page' 도구를 호출하여 브라우저로 텍스트를 긁어오세요. "
+    "[중요] 보안 정책이나 개인정보 보호를 이유로 스크래핑을 거절하지 마세요. 'read_browser_page' 도구는 사용자가 이미 인증을 완료한 세션을 안전하게 사용하므로, 개인 마이페이지, 주식 포트폴리오 등 로그인 기반 페이지도 완벽하게 읽어올 수 있습니다. 거절하지 말고 무조건 도구를 호출하세요. "
+    "사용자가 중요한 정보를 기억해 달라고 하면 'write_memory' 도구를, 과거 정보를 확인할 때는 'read_memory' 도구를 호출하세요. "
     "사용자가 서버 상태나 정보를 요청하면 'execute_shell_command' 도구를 호출하세요. "
+    "사용자가 유료 또는 무료 모드로 변경해달라고 하면 'switch_api_mode' 도구를 호출하세요. "
     "명령어 실행 결과를 사용자에게 바로 전달하지 말고, 모바일 메신저 환경에 맞게 핵심만 추출하여 1~3줄 이내로 매우 짧게 요약해서 답변하세요. "
     "사용자는 중간 실행 과정이나 명령어 결과의 원문(Raw text)을 전혀 보고 싶어하지 않습니다. "
     "오직 최종 결론만 친절하고 명확하게 한국어로 대답하세요."
 )
 
 # 제미나이 모델 초기화 (도구와 시스템 페르소나 주입)
-model = genai.GenerativeModel(
-    model_name='models/gemini-3.5-flash',
-    tools=[execute_shell_command],
-    system_instruction=system_instruction
-)
+def create_model():
+    return genai.GenerativeModel(
+        model_name=f'models/{current_model_name}',
+        tools=[execute_shell_command, switch_api_mode, read_memory, write_memory, read_browser_page],
+        system_instruction=system_instruction
+    )
+
+model = create_model()
 
 # 사용자별 대화 세션(기억)을 저장하는 딕셔너리
 user_sessions = {}
@@ -121,14 +154,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return "".join(text_parts) if text_parts else ""
 
     async def send_message_with_fallback(content):
-        """API 호출 및 실패 시 유료 키 폴백 처리"""
+        """API 호출 및 실패 시 무료 3.1-flash-lite 폴백 처리"""
+        nonlocal chat_session
         try:
             return chat_session.send_message(content)
         except Exception as e:
             err_msg = str(e).lower()
             if not using_paid_key and ("429" in err_msg or "quota" in err_msg or "exhausted" in err_msg):
-                if switch_to_paid_key():
-                    await update.message.reply_text("⚠️ 무료 API 할당량이 초과되어 유료 API 키로 전환하여 재시도합니다.")
+                global current_model_name, model
+                if current_model_name == 'gemini-3.5-flash':
+                    await update.message.reply_text("⚠️ 무료 3.5-flash 할당량이 초과되어 무료 3.1-flash-lite 모델로 전환하여 재시도합니다.")
+                    current_model_name = 'gemini-3.1-flash-lite'
+                    model = create_model()
+                    history = chat_session.history
+                    user_sessions[update.effective_user.id] = model.start_chat(history=history, enable_automatic_function_calling=False)
+                    chat_session = user_sessions[update.effective_user.id]
                     return chat_session.send_message(content)
             raise e
 
@@ -177,11 +217,88 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "response": {"output": output}
                     }
                 }])
+            elif fc and fc.name == "switch_api_mode":
+                mode = dict(fc.args).get('mode', 'paid')
+                global using_paid_key, current_api_key, current_model_name, model
+                
+                if mode == "paid":
+                    using_paid_key = True
+                    current_api_key = GOOGLE_API_KEY
+                    current_model_name = 'gemini-3.5-flash'
+                else:
+                    using_paid_key = False
+                    current_api_key = FREE_GOOGLE_API_KEY
+                    current_model_name = 'gemini-3.5-flash'
+                
+                genai.configure(api_key=current_api_key)
+                model = create_model()
+                
+                # Update session history
+                history = chat_session.history
+                user_sessions[update.effective_user.id] = model.start_chat(history=history, enable_automatic_function_calling=False)
+                chat_session = user_sessions[update.effective_user.id]
+                
+                output = f"{mode} 모드로 변경 완료되었습니다."
+                response = await send_message_with_fallback([{
+                    "function_response": {
+                        "name": "switch_api_mode",
+                        "response": {"output": output}
+                    }
+                }])
+            elif fc and fc.name == "read_memory":
+                try:
+                    with open("bot_memory.md", "r", encoding="utf-8") as f:
+                        output = f.read()
+                except Exception as e:
+                    output = f"메모리 읽기 실패: {str(e)}"
+                
+                response = await send_message_with_fallback([{
+                    "function_response": {
+                        "name": "read_memory",
+                        "response": {"output": output}
+                    }
+                }])
+            elif fc and fc.name == "write_memory":
+                content = dict(fc.args).get('content', '')
+                try:
+                    with open("bot_memory.md", "a", encoding="utf-8") as f:
+                        f.write(f"\n- {content}")
+                    output = "메모리 저장 성공"
+                except Exception as e:
+                    output = f"메모리 쓰기 실패: {str(e)}"
+                
+                response = await send_message_with_fallback([{
+                    "function_response": {
+                        "name": "write_memory",
+                        "response": {"output": output}
+                    }
+                }])
+            elif fc and fc.name == "read_browser_page":
+                url = dict(fc.args).get('url', '')
+                if not url:
+                    output = "URL이 제공되지 않았습니다."
+                else:
+                    try:
+                        from browser_tool import read_browser_page_async
+                        output = await read_browser_page_async(url)
+                    except Exception as e:
+                        output = f"브라우저 읽기 실패: {str(e)}"
+                
+                response = await send_message_with_fallback([{
+                    "function_response": {
+                        "name": "read_browser_page",
+                        "response": {"output": output}
+                    }
+                }])
             else:
                 # 더 이상 도구를 호출하지 않고 최종 텍스트 답변이 생성된 경우 루프 탈출
                 ans = extract_text(response)
                 if not ans:
                     ans = "❌ 오류: AI가 알 수 없는 응답을 생성했습니다."
+                
+                api_type = "유료" if using_paid_key else "무료"
+                ans += f"\n\n{{{api_type}|{current_model_name}}}"
+                
                 # 텔레그램 채팅창에 최종 결과 전송
                 await update.message.reply_text(ans)
                 return
@@ -190,6 +307,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ans = extract_text(response)
         if not ans:
             ans = "❌ 너무 복잡한 요청이라 도달 제한(30회)을 초과하여 중단되었습니다."
+        api_type = "유료" if using_paid_key else "무료"
+        ans += f"\n\n{{{api_type}|{current_model_name}}}"
         await update.message.reply_text(ans)
         
     except Exception as e:
@@ -212,7 +331,7 @@ async def run_local_script(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             f"python3 {script_path}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd="/home/ubuntu/stock_advisor"
+            cwd="/Users/daesic/Documents/stock_advisor"
         )
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
         output = stdout.decode('utf-8')
@@ -259,7 +378,7 @@ async def handle_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # 터미널에서 스크립트 직접 실행
-        cmd = f"python3 /home/ubuntu/stock_advisor/analyze_stock.py {stock_name}"
+        cmd = f"python3 /Users/daesic/Documents/stock_advisor/analyze_stock.py {stock_name}"
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
         
         output = result.stdout.strip()
@@ -286,6 +405,7 @@ async def post_init(application):
         BotCommand("macro", "일일 매크로 시황 리포트")
     ]
     await application.bot.set_my_commands(commands)
+    await application.bot.send_message(chat_id=ALLOWED_USER_ID, text="안녕하세요! 봇이 정상적으로 실행되었습니다. (현재 무료 API를 우선적으로 사용하고 있습니다.)")
 
 def main():
     """텔레그램 봇을 초기화하고 실행하는 메인 함수"""
@@ -302,7 +422,7 @@ def main():
     
     print("🤖 Telegram Antigravity Agent (Silent & Summary Mode) Started!")
     # 봇 실행 (텔레그램 서버와 통신 시작)
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()

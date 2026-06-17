@@ -8,3 +8,8 @@ venv/
 env/
 .vscode/
 .idea/
+nohup.out
+.DS_Store
+browser_profile/
+data/
+*.txt
